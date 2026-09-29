@@ -1,6 +1,6 @@
 # System Architecture Overview
 
-This document provides a comprehensive architecture reference covering application patterns, deployment strategy, scaling models, security, observability, disaster recovery, CI/CD, data flow, cloud deployments, hosting models, and server architecture.
+This document provides a comprehensive architecture reference covering application patterns, deployment strategy, scaling models, security, observability, disaster recovery, CI/CD, data flow, cloud deployments, hosting models, server architecture, and production resiliency.
 
 ## 1. Application Architecture Overview
 
@@ -96,679 +96,553 @@ graph TB
 
 ## 2. Security Architecture
 
-Security should be treated as a core design concern, not an afterthought. A well-designed system uses layers of protection across identity, access, network, infrastructure, and data handling.
+Security must be designed in layers, not added at the end. A robust system protects identity, access, network traffic, data, and operational systems.
 
-### 2.1 Identity and Access Security
-
-```mermaid
-graph TB
-    Client["Client"] --> AuthN["Authentication"]
-    AuthN --> IAM["Identity Provider"]
-    IAM --> JWT["JWT / Tokens"]
-    JWT --> API["API Gateway"]
-    API --> Policy["RBAC / ABAC Policy"]
-    Policy --> Service["Protected Service"]
-    Service --> Data["Protected Data"]
-```
-
-### 2.2 Security Layered Model
-
-- Identity and Access Management
-  - OAuth 2.0 / OIDC
-  - SSO and MFA
-  - RBAC / ABAC
-- Network Security
-  - Private subnets
-  - WAF and API gateway protections
-  - TLS everywhere
-  - IP allow lists and VPC isolation
-- Application Security
-  - Input validation
-  - Parameterized queries
-  - CSRF and XSS protection
-  - Rate limiting and request signing
-- Data Security
-  - Encryption at rest and in transit
-  - Secret management
-  - Key rotation
-  - Data masking and tokenization
-- Operations Security
-  - Least privilege IAM policies
-  - Security scanning in CI/CD
-  - Patch management
-  - Audit logs and detection rules
-
-### 2.3 Recommended Security Controls
+### 2.1 Security Layers
 
 ```mermaid
 graph TB
-    User["User"] --> TLS["TLS 1.2+"]
-    TLS --> WAF["WAF / Rate Limiting"]
+    Users["Users"] --> Edge["Edge Security"]
+    Edge --> WAF["WAF / Rate Limiting"]
     WAF --> Gateway["API Gateway"]
-    Gateway --> AuthZ["Authorization"]
-    AuthZ --> App["App Service"]
-    App --> DB["Encrypted DB"]
-    App --> Secrets["Secrets Manager"]
+    Gateway --> Auth["Authentication & Authorization"]
+    Auth --> App["Application Layer"]
+    App --> DB["Database Security"]
+    App --> Secrets["Secrets Management"]
     App --> Logs["Audit Logs / SIEM"]
 ```
 
-### 2.4 Key Security Best Practices
+### 2.2 Core Security Controls
 
-- Use short-lived tokens and refresh tokens
-- Apply least-privilege IAM roles
-- Enable MFA for administration and privileged users
-- Keep secrets out of source control
-- Run dependency and container vulnerability scans
-- Use network segmentation between tiers
-- Protect secrets with KMS/HSM-backed services
-- Monitor failed auth attempts and privilege escalations
+- Identity and Access Management
+  - OAuth 2.0 / OIDC
+  - RBAC / ABAC
+  - MFA for admins
+  - Short-lived JWTs
+- Network Security
+  - TLS everywhere
+  - Private networking / VPC / subnet isolation
+  - WAF and DDoS protection
+  - Firewall and IP restrictions
+- Application Security
+  - Input validation
+  - Output encoding
+  - CSRF and XSS mitigation
+  - SQL injection protection
+  - Rate limiting and bot protections
+- Data Security
+  - Encryption at rest and in transit
+  - KMS / HSM backing
+  - Secret rotation
+  - Tokenization and masking for sensitive values
+- Operations Security
+  - Least-privilege IAM policies
+  - Automated vulnerability scanning
+  - Patch management
+  - Security events and anomaly detection
+
+### 2.3 Threat Model Areas
+
+- External attacks: network probing, brute force, bot traffic, DDoS
+- Application attacks: SQL injection, SSRF, XSS, CSRF, deserialization issues
+- Identity attacks: token theft, session hijacking, privilege escalation
+- Data attacks: exfiltration, unauthorized access, accidental disclosure
+- Supply chain attacks: compromised dependencies, untrusted packages, malicious containers
+
+### 2.4 Security Best Practices
+
+```mermaid
+graph TB
+    Client["Client"] --> TLS["TLS 1.2+"]
+    TLS --> Gateway["Gateway"]
+    Gateway --> Policy["Authorization Policy"]
+    Policy --> App["App Logic"]
+    App --> Secrets["Secret Manager"]
+    App --> DB["Encrypted Database"]
+    App --> Logs["Audit Logs"]
+```
+
+- Use secret managers for API keys, certificates, and database credentials
+- Review and rotate tokens regularly
+- Validate all request inputs and schema contracts
+- Log security-relevant events consistently
+- Scan dependencies, containers, and IaC before deployment
+- Limit and monitor admin access aggressively
+- Keep systems patched and hardened
 
 ---
 
-## 3. Observability Architecture
+## 3. Scalability Architecture
 
-Observability is the ability to understand system health, behavior, and root cause from metrics, logs, traces, and events.
+Scalability is the system’s ability to handle increased load without unacceptable latency, failure, or complexity. There are several patterns to choose from.
 
-### 3.1 Observability Stack
-
-```mermaid
-graph TB
-    Client["Clients"] --> API["API Services"]
-    API --> App["Application Services"]
-    App --> DB["Database"]
-    App --> Cache["Redis"]
-    App --> Queue["Message Queue"]
-
-    API --> Logs["Logs"]
-    App --> Metrics["Metrics"]
-    App --> Traces["Distributed Tracing"]
-    DB --> Metrics
-    Queue --> Metrics
-
-    Logs --> Observability["Logging Platform"]
-    Metrics --> Observability
-    Traces --> Observability
-    Observability --> Alerts["Alerting / Dashboards"]
-```
-
-### 3.2 Signals to Collect
-
-- Metrics
-  - CPU, memory, request latency, error rate, throughput
-  - Saturation metrics and SLO/SLI tracking
-- Logs
-  - Structured logs from application, infrastructure, and network
-  - Trace correlation IDs
-- Traces
-  - End-to-end request path across services
-  - Database queries and downstream calls
-- Events
-  - Deployment events, autoscaling, config changes, security events
-
-### 3.3 Recommended Observability Model
-
-- Define service-level objectives (SLOs) and service-level indicators (SLIs)
-- Instrument every service with logs and traces
-- Sample traces intelligently to balance cost and coverage
-- Correlate logs with request IDs and trace IDs
-- Centralize telemetry in a monitoring backend
-- Alert only on high-signal conditions
-
-### 3.4 Dashboard Examples
-
-- Request success rate
-- P95/P99 latency
-- Error budget burn
-- Database latency
-- Queue backlog and processing lag
-- Cloud resource saturation
-- Auth failures and suspicious traffic
-
----
-
-## 4. Disaster Recovery and Business Continuity
-
-Disaster recovery ensures the system remains available or can be restored quickly after failures, outages, or incidents.
-
-### 4.1 DR Patterns
-
-```mermaid
-graph TB
-    Users["Users"] --> App["Primary Environment"]
-    App --> DB["Primary DB"]
-    DB --> Replication["Replication / Snapshots"]
-    Replication --> DR["Secondary / DR Region"]
-    DR --> Failover["Failover Automation"]
-    Failover --> Recovery["Recovery / Health Checks"]
-```
-
-### 4.2 DR Strategies
-
-- Backup-only
-  - Restore from backup when needed
-  - Suitable for low-criticality workloads
-- Warm standby
-  - Secondary environment runs in reduced capacity
-  - Fast activation with minimal data loss
-- Hot standby
-  - Live replica serving traffic or ready to take over immediately
-- Multi-region active-active
-  - Traffic is distributed across regions
-  - Highest availability, highest complexity
-
-### 4.3 Recovery Objectives
-
-- RTO (Recovery Time Objective): How fast the system must recover
-- RPO (Recovery Point Objective): How much data loss is acceptable
-
-Examples:
-- RTO < 15 minutes, RPO < 5 minutes for critical workloads
-- RTO < 4 hours, RPO < 24 hours for non-critical workloads
-
-### 4.4 Key DR Controls
-
-- Automated backups with retention policies
-- Cross-region replication
-- Database failover orchestration
-- Infrastructure-as-code for recovery automation
-- Periodic tabletop disaster drills
-- Dependency inventory and recovery runbooks
-
-### 4.5 Example Recovery Workflow
-
-```mermaid
-graph TB
-    Detect["Failure Detected"] --> Assess["Impact Assessment"]
-    Assess --> Decide["Failover Decision"]
-    Decide --> Restore["Restore from Backup / Secondary Region"]
-    Restore --> Validate["Health Checks & Smoke Tests"]
-    Validate --> Resume["Traffic Re-routing"]
-    Resume --> Post["Post-incident Review"]
-```
-
----
-
-## 5. CI/CD Pipelines
-
-A healthy CI/CD pipeline reduces manual work and improves reliability. It should support quality checks, automation, and deployment safety.
-
-### 5.1 CI/CD Flow
-
-```mermaid
-graph TB
-    Dev["Developer Commit"] --> CI["CI Pipelines"]
-    CI --> Lint["Lint / Static Analysis"]
-    Lint --> Test["Unit / Integration Tests"]
-    Test --> Scan["Security Scan / SAST / SCA"]
-    Scan --> Build["Build Artifacts"]
-    Build --> CD["CD Pipeline"]
-    CD --> Staging["Deploy to Staging"]
-    Staging --> Smoke["Smoke Tests"]
-    Smoke --> Prod["Promote to Production"]
-    Prod --> Monitor["Monitoring & Rollback"]
-```
-
-### 5.2 CI Best Practices
-
-- Run on every pull request and merge
-- Enforce code quality checks
-- Use deterministic builds and versioning
-- Run tests in isolated environments
-- Scan container images and dependencies
-- Cache dependencies to keep pipelines fast
-
-### 5.3 CD Best Practices
-
-- Deploy through environments: dev → test → staging → prod
-- Use immutable artifacts and versioned releases
-- Add canary or blue-green deployment gates
-- Validate service health before full rollout
-- Automate rollback on failure
-- Keep deployment runbooks in version control
-
-### 5.4 Common Pipeline Gates
-
-- Code quality gate
-- Unit test gate
-- Integration and contract test gate
-- Security scan gate
-- Performance regression gate
-- Manual approval gate for production rollout
-
----
-
-## 6. Data Flow Diagrams
-
-This section shows how data moves through a typical system and where transformations or checks occur.
-
-### 6.1 Request Flow
-
-```mermaid
-graph LR
-    Client["Client"] --> Edge["CDN / Gateway"]
-    Edge --> Auth["Auth Middleware"]
-    Auth --> App["Application Service"]
-    App --> Validate["Validation / Business Rules"]
-    Validate --> DB["Database"]
-    DB --> Response["Response to Client"]
-```
-
-### 6.2 Event Processing Flow
-
-```mermaid
-graph LR
-    Producer["Producer Service"] --> Queue["Message Queue"]
-    Queue --> Worker["Worker Service"]
-    Worker --> Transform["Transform / Enrich"]
-    Transform --> Store["Data Store"]
-    Transform --> Notify["Notification / Reporting"]
-```
-
-### 6.3 Payment Processing Flow
-
-```mermaid
-graph LR
-    User["Customer"] --> App["Checkout Service"]
-    App --> Validate["Validate Order"]
-    Validate --> Payment["Payment Gateway"]
-    Payment --> Confirm["Confirmation"]
-    Confirm --> OrderDB["Order DB"]
-    Confirm --> Event["Payment Succeeded Event"]
-    Event --> Notify["Email / Ledger / Analytics"]
-```
-
-### 6.4 Data Flow Best Practices
-
-- Minimize data retention and scope of permissions
-- Validate and sanitize data before persistence
-- Encrypt sensitive data in transit and at rest
-- Add request IDs and correlation IDs to trace flow
-- Ensure idempotency for message-driven systems
-- Log schema or protocol changes explicitly
-
----
-
-## 7. Cloud-Specific Deployment Patterns
-
-Different cloud providers offer similar core services but with provider-specific naming and implementation details.
-
-### 7.1 AWS Architecture Pattern
-
-```mermaid
-graph TB
-    User["Users"] --> CF["CloudFront"]
-    CF --> ALB["Application Load Balancer"]
-    ALB --> EC2["EC2/EKS/Fargate"]
-    EC2 --> RDS["RDS / Aurora"]
-    EC2 --> Redis["ElastiCache"]
-    EC2 --> S3["S3"]
-    EC2 --> SQS["SQS"]
-    SQS --> Worker["Worker ECS/Lambda"]
-    EC2 --> WAF["WAF"]
-    EC2 --> CloudWatch["CloudWatch"]
-```
-
-### 7.2 Azure Architecture Pattern
-
-```mermaid
-graph TB
-    User["Users"] --> FrontDoor["Azure Front Door"]
-    FrontDoor --> AppGW["Application Gateway"]
-    AppGW --> AppSvc["Azure App Service / AKS"]
-    AppSvc --> SQL["Azure SQL"]
-    AppSvc --> Redis["Azure Cache for Redis"]
-    AppSvc --> Blob["Azure Blob Storage"]
-    AppSvc --> SB["Service Bus"]
-    SB --> Worker["Azure Functions / Container Apps"]
-    AppSvc --> Monitor["Azure Monitor"]
-```
-
-### 7.3 GCP Architecture Pattern
-
-```mermaid
-graph TB
-    User["Users"] --> LB["Cloud Load Balancing"]
-    LB --> GKE["GKE / Cloud Run"]
-    GKE --> CloudSQL["Cloud SQL"]
-    GKE --> Memorystore["Memorystore"]
-    GKE --> Bucket["Cloud Storage"]
-    GKE --> PubSub["Pub/Sub"]
-    PubSub --> Worker["Cloud Function / Job Runner"]
-    GKE --> Logging["Cloud Logging / Monitoring"]
-```
-
-### 7.4 Cloud Deployment Recommendations
-
-- Prefer managed services for databases, caches, queues, and monitoring
-- Use autoscaling groups or managed Kubernetes for stateless workloads
-- Use regional redundancy for critical workloads
-- Use private networking for internal communication
-- Separate ingress, application, data, and worker layers
-- Keep infrastructure as code for repeatable environments
-
----
-
-## 8. Hosting Models and Server Architecture
-
-Hosting and server architecture determine where the application lives, how it is provisioned, and how it is operated. Different hosting models trade cost, flexibility, operational load, and scalability.
-
-### 8.1 Shared Hosting
-
-```mermaid
-graph TB
-    Users["Users"] --> SharedHost["Shared Hosting Server"]
-    SharedHost --> App["Web App"]
-    SharedHost --> DB["Shared Database"]
-    SharedHost --> FTP["File Storage"]
-```
-
-**Use cases:**
-- Small static sites
-- Simple WordPress sites
-- Low-traffic internal websites
-
-**Pros:**
-- Low cost
-- Minimal setup complexity
-- Managed by provider
-
-**Cons:**
-- Limited resources
-- Shared performance impact
-- Less control and isolation
-
----
-
-### 8.2 VPS Hosting
-
-```mermaid
-graph TB
-    Users["Users"] --> VPS["VPS Instance"]
-    VPS --> Nginx["Nginx / Apache"]
-    Nginx --> App["Application Server"]
-    App --> DB["PostgreSQL / MySQL"]
-    App --> Storage["Persistent Storage"]
-```
-
-**Use cases:**
-- Small business applications
-- Custom deployments
-- Cost-effective control without full bare metal
-
-**Pros:**
-- Better control than shared hosting
-- Moderate scalability
-- Easier custom configuration
-
-**Cons:**
-- Requires OS and patch management
-- You manage runtime dependencies
-- Limited to single server unless clustered
-
----
-
-### 8.3 Dedicated Servers
+### 3.1 Horizontal Scaling Pattern
 
 ```mermaid
 graph TB
     Users["Users"] --> LB["Load Balancer"]
-    LB --> ServerA["Dedicated Server A"]
-    LB --> ServerB["Dedicated Server B"]
-    ServerA --> DB["Database Server"]
-    ServerB --> App["Application Services"]
-    DB --> Storage["NAS / Storage"]
-```
-
-**Use cases:**
-- High-performance workloads
-- Enterprise infrastructure
-- Regulated or custom environments
-
-**Pros:**
-- Maximum resource control
-- Better performance predictability
-- Strong isolation
-
-**Cons:**
-- Higher cost
-- More hardware maintenance
-- Requires in-house ops or managed hosting
-
----
-
-### 8.4 Cloud Hosting
-
-```mermaid
-graph TB
-    Users["Users"] --> CDN["CDN / Edge"]
-    CDN --> LB["Cloud Load Balancer"]
-    LB --> VM["VM / Container / Serverless"]
-    VM --> Cache["Redis Cache"]
-    VM --> DB["Managed Database"]
-    VM --> Storage["Object Storage"]
-    VM --> Queue["Queue Service"]
-```
-
-**Use cases:**
-- Scalable web apps
-- Modern SaaS platforms
-- Multi-region systems and microservices
-
-**Pros:**
-- Elastic scaling
-- Pay-as-you-go
-- Managed infrastructure services
-- Multi-region availability
-
-**Cons:**
-- Cloud cost complexity
-- Vendor lock-in risk
-- Requires architecture planning
-
----
-
-### 8.5 Container Hosting
-
-```mermaid
-graph TB
-    Users["Users"] --> Ingress["Ingress Controller"]
-    Ingress --> Kube["Kubernetes Cluster"]
-    Kube --> Pod1["App Container 1"]
-    Kube --> Pod2["App Container 2"]
-    Kube --> Pod3["App Container 3"]
-    Pod1 --> DB["Managed DB"]
-    Pod2 --> DB
-    Pod3 --> DB
-    Kube --> Storage["Persistent Volume"]
-```
-
-**Use cases:**
-- Microservices deployment
-- Portability across environments
-- Modern application delivery pipelines
-
-**Pros:**
-- Efficient resource usage
-- Consistent runtimes
-- Easier orchestration and scaling
-
-**Cons:**
-- More orchestration complexity
-- Requires cluster and networking knowledge
-- Security and image validation are critical
-
----
-
-### 8.6 Serverless Hosting
-
-```mermaid
-graph TB
-    User["User"] --> Gateway["API Gateway"]
-    Gateway --> Fn1["Function 1"]
-    Gateway --> Fn2["Function 2"]
-    Fn1 --> Data["Database / Storage"]
-    Fn2 --> Data
-    Fn1 --> Logs["Cloud Logs / Metrics"]
-    Fn2 --> Logs
-```
-
-**Use cases:**
-- Event-driven processing
-- APIs with intermittent traffic
-- High automation workloads
-
-**Pros:**
-- No server maintenance
-- High elasticity
-- Cost-effective for bursty workloads
-
-**Cons:**
-- Cold starts
-- Limited runtime lifetime
-- Debugging and observability can be harder
-
----
-
-## 9. Server Types and Responsibilities
-
-A server architecture usually includes multiple roles depending on workload and scale.
-
-### 9.1 Web Server
-
-- Handles HTTP requests
-- Serves static files or proxies to app servers
-- Examples: NGINX, Apache, Envoy
-
-### 9.2 Application Server
-
-- Runs business logic
-- Connects to databases and downstream APIs
-- Examples: Node.js, Java Spring Boot, Python Django, Go, ASP.NET
-
-### 9.3 Database Server
-
-- Persists transactional data
-- Supports query execution and indexing
-- Examples: PostgreSQL, MySQL, SQL Server, MongoDB, Redis
-
-### 9.4 Cache Server
-
-- Stores frequently accessed data in memory
-- Reduces repeated database hits
-- Examples: Redis, Memcached
-
-### 9.5 Queue / Event Server
-
-- Decouples producer and consumer systems
-- Handles async workloads
-- Examples: RabbitMQ, Kafka, SQS, Azure Service Bus
-
-### 9.6 Search / Index Server
-
-- Provides search and document indexing
-- Examples: Elasticsearch, OpenSearch, Algolia
-
-### 9.7 Monitoring / Observability Server
-
-- Collects metrics, logs, traces, and alerts
-- Examples: Prometheus, Grafana, Datadog, OpenTelemetry, New Relic
-
----
-
-## 10. Typical Production Server Layout
-
-```mermaid
-graph TB
-    Users["Users"] --> Edge["Edge / CDN / WAF"]
-    Edge --> LB["Load Balancer"]
-    LB --> Web1["Web Server 1"]
-    LB --> Web2["Web Server 2"]
-    Web1 --> App1["App Server 1"]
-    Web2 --> App2["App Server 2"]
-    App1 --> DB["Primary Database"]
-    App2 --> DB
-    App1 --> Cache["Redis Cluster"]
+    LB --> App1["App Instance 1"]
+    LB --> App2["App Instance 2"]
+    LB --> App3["App Instance 3"]
+    App1 --> Cache["Redis"]
     App2 --> Cache
-    App1 --> Queue["Message Queue"]
-    App2 --> Queue
-    Queue --> Worker["Background Workers"]
-    App1 --> Monitor["Observability Platform"]
-    App2 --> Monitor
+    App3 --> Cache
+    App1 --> DB["Database"]
+    App2 --> DB
+    App3 --> DB
 ```
 
-### Typical responsibilities by layer
+**Best for:**
+- Stateless web services
+- APIs and microservices
+- Burst traffic patterns
 
-- Edge: TLS termination, WAF, caching, DDoS protection
-- Load balancer: health checks, request distribution, sticky sessions if needed
-- Web servers: static assets, reverse proxying, basic request validation
-- Application servers: business logic and API execution
-- Data servers: DB, cache, message queue, search engine
-- Background workers: async email, file processing, import/export
-- Observability layer: metrics, traces, dashboards, alerts
+**Pros:**
+- Simple scale-out model
+- High resilience
+- Low cost for stateless workloads
+
+**Cons:**
+- Shared services can become bottlenecks
+- Requires session management strategy if stateful
+
+### 3.2 Vertical Scaling Pattern
+
+```mermaid
+graph TB
+    Users["Users"] --> Server["Single Large Server"]
+    Server --> CPU["More CPU"]
+    Server --> RAM["More RAM"]
+    Server --> Disk["More Storage"]
+```
+
+**Best for:**
+- Small systems
+- Database nodes
+- Monolithic applications
+
+**Pros:**
+- Simpler to manage
+- No distributed coordination needed
+
+**Cons:**
+- Hardware ceiling
+- More downtime during upgrades
+- Less fault isolation
+
+### 3.3 Read Replicas and Database Scaling
+
+```mermaid
+graph TB
+    App["App Layer"] --> Primary["Primary DB"]
+    Primary --> Replica1["Read Replica 1"]
+    Primary --> Replica2["Read Replica 2"]
+    Primary --> Replica3["Read Replica 3"]
+    Replica1 --> Read["Read-heavy workloads"]
+    Replica2 --> Read
+    Replica3 --> Read
+```
+
+**Best for:**
+- Read-heavy applications
+- Reporting dashboards
+- Search-heavy workloads
+
+**Pros:**
+- Improves read performance
+- Offloads primary database
+- Easier to scale reads independently
+
+**Cons:**
+- Replication lag
+- Eventual consistency
+- Not for all write-heavy systems
+
+### 3.4 Sharding
+
+```mermaid
+graph TB
+    Users["Users"] --> Router["Shard Router"]
+    Router --> Shard1["Shard 1"]
+    Router --> Shard2["Shard 2"]
+    Router --> Shard3["Shard 3"]
+    Shard1 --> DB1["DB 1"]
+    Shard2 --> DB2["DB 2"]
+    Shard3 --> DB3["DB 3"]
+```
+
+**Best for:**
+- Very large datasets
+- Partition-by-tenant or user grouping
+- Large-scale systems with data distribution
+
+**Pros:**
+- High scale-out for data
+- Better distribution of I/O
+
+**Cons:**
+- More application complexity
+- Cross-shard queries are expensive
+- Rebalancing can be hard
+
+### 3.5 Caching Strategy
+
+```mermaid
+graph TB
+    Client["Client"] --> Browser["Browser Cache"]
+    Browser --> App["Application Cache"]
+    App --> Redis["Distributed Cache"]
+    Redis --> DB["Primary Database"]
+```
+
+**Best for:**
+- Frequently repeated reads
+- Expensive compute or database lookups
+- High-traffic API endpoints
+
+**Pros:**
+- Lower latency
+- Less database pressure
+- Better throughput
+
+**Cons:**
+- Cache invalidation complexity
+- Stale data risk
+- More memory overhead
+
+### 3.6 Queue-Based Scaling
+
+```mermaid
+graph TB
+    API["API Layer"] --> MQ["Message Queue"]
+    MQ --> Worker1["Worker 1"]
+    MQ --> Worker2["Worker 2"]
+    MQ --> Worker3["Worker 3"]
+    Worker1 --> Task1["Email / Jobs"]
+    Worker2 --> Task2["Processing"]
+    Worker3 --> Task3["Reports / Integrations"]
+```
+
+**Best for:**
+- Background jobs
+- Heavy processing tasks
+- Decoupled systems
+
+**Pros:**
+- Better resilience under spikes
+- Worker autoscaling
+- Producers and consumers are decoupled
+
+**Cons:**
+- More operational complexity
+- Event ordering challenges
+- Need retry and dead-letter handling
+
+### 3.7 Scalability Rules of Thumb
+
+- Scale out stateless services, not databases first
+- Use caching for repeated reads
+- Offload long-running work into workers and queues
+- Keep database transactions small and focused
+- Use observability to identify exact bottlenecks
+- Test with realistic load patterns before production rollout
 
 ---
 
-## 11. Hosting and Infrastructure Decision Guide
+## 4. Observability Architecture
 
-### Choose Shared Hosting when:
-- The app is small and traffic is low
-- Budget is limited
-- No custom server configuration is needed
+Observability is the ability to understand system health and failures from data.
 
-### Choose VPS when:
-- You need more control than shared hosting
-- You want a single dedicated environment
-- The workload is moderate and predictable
+### 4.1 Observability Stack
 
-### Choose Dedicated Hosts when:
-- You need stronger isolation or resource guarantees
-- You run high-performance enterprise workloads
-- Custom hardware or compliance requirements exist
+```mermaid
+graph TB
+    Clients["Clients"] --> API["API Services"]
+    API --> App["Application Services"]
+    App --> DB["Database"]
+    App --> Queue["Queue"]
+    App --> Cache["Cache"]
 
-### Choose Cloud Hosting when:
-- You need autoscaling, resilience, and global availability
-- The application is growing or has variable traffic
-- You want a managed service model
+    API --> Logs["Logs"]
+    App --> Metrics["Metrics"]
+    App --> Traces["Traces"]
+    DB --> Metrics
+    Queue --> Metrics
 
-### Choose Containers/Kubernetes when:
-- You need portable deployments
-- Multiple services must be orchestrated together
-- You want repeatable deployments across environments
+    Logs --> OTel["Observability Platform"]
+    Metrics --> OTel
+    Traces --> OTel
+    OTel --> Alerts["Alerts / Dashboards"]
+```
 
-### Choose Serverless when:
-- You want minimal operations overhead
-- Workloads are event-driven or bursty
-- Fine-grained autoscaling is more valuable than fixed infrastructure
+### 4.2 What to Measure
+
+- Latency
+- Error rate
+- Throughput
+- CPU and memory usage
+- Database response time
+- Disk and network saturation
+- Queue backlog
+- User-facing SLOs
+
+### 4.3 Observability Best Practices
+
+- Add correlation IDs to requests
+- Centralize logs in a searchable platform
+- Use OpenTelemetry for consistent tracing and metrics
+- Set alerts on actionable thresholds, not noise
+- Define SLOs and error budgets
 
 ---
 
-## 12. Security, Operations, and Reliability by Hosting Model
+## 5. Disaster Recovery and High Availability
 
-| Hosting Model | Security Responsibility | Ops Burden | Scalability | Best For |
-|---|---|---|---|---|
-| Shared Hosting | Provider managed | Low | Low | Static sites |
-| VPS | Moderate | Medium | Medium | Small custom apps |
-| Dedicated Server | High | High | Medium | Enterprise and custom workloads |
-| Cloud Managed | Shared + customer | Medium | High | Modern SaaS apps |
-| Containers | Shared + customer | Medium-High | High | Microservices |
-| Serverless | Shared + customer | Low | Very High | Event-driven workloads |
+### 5.1 DR Model
+
+```mermaid
+graph TB
+    Users["Users"] --> Prod["Primary Region"]
+    Prod --> Replica["Secondary Region / Replica"]
+    Prod --> Backup["Backups / Snapshots"]
+    Backup --> Restore["Restore Process"]
+    Replica --> Failover["Failover Mechanism"]
+```
+
+### 5.2 DR Strategies
+
+- Backup-only
+- Warm standby
+- Hot standby
+- Multi-region active-active
+
+### 5.3 Key Metrics
+
+- RTO: restoration time target
+- RPO: acceptable data loss window
+- SLA: uptime expectations
+- MTTR: mean time to recover
 
 ---
 
-## 13. Final Architecture Recommendation
+## 6. CI/CD and Deployment Safety
 
-A modern production system often combines hosting and architecture decisions thoughtfully:
+### 6.1 CI/CD Flow
 
-- Use a cloud-managed or containerized hosting model for flexibility and scaling
-- Put applications behind a load balancer and API gateway
-- Use managed databases and caches to reduce operational work
-- Protect the system with WAF, TLS, RBAC, and secret managers
-- Add observability with logs, metrics, tracing, and alerts
-- Prepare for failure with backups and DR procedures
-- Use CI/CD pipelines with safe deployment strategies
-- Add background workers for asynchronous tasks and queue-based scaling
+```mermaid
+graph TB
+    Dev["Developer"] --> Commit["Commit / PR"]
+    Commit --> CI["CI Pipeline"]
+    CI --> Test["Tests / Lint / Scan"]
+    Test --> Build["Build Artifacts"]
+    Build --> Deploy["Deploy to Staging"]
+    Deploy --> Smoke["Smoke Tests"]
+    Smoke --> Prod["Production Rollout"]
+    Prod --> Monitor["Monitoring / Auto Rollback"]
+```
 
-The best architecture is not the most complex one. It is the architecture that meets the business requirements with the right amount of performance, reliability, security, and operational cost.
+### 6.2 Safe Deployment Options
+
+- Blue/Green deployment
+- Canary release
+- Rolling deployment
+- Shadow deployment
+
+### 6.3 Deployment Best Practices
+
+- Separate environments by stage
+- Use immutable artifacts
+- Make rollback automatic
+- Gate production on health checks
+- Run smoke tests before exposing users to new versions
+
+---
+
+## 7. Data Flow and System Interaction
+
+### 7.1 Example Data Flow
+
+```mermaid
+graph LR
+    Client["Client"] --> Edge["CDN / Gateway"]
+    Edge --> Auth["Authentication"]
+    Auth --> App["Application"]
+    App --> DB["Database"]
+    App --> Queue["Async Queue"]
+    Queue --> Worker["Worker Process"]
+    Worker --> Notify["Notifications / Integrations"]
+```
+
+### 7.2 System Interactions Best Practices
+
+- Validate data at boundaries
+- Keep data flows explicit and observable
+- Use async patterns for non-critical work
+- Ensure idempotency for retries and message reprocessing
+
+---
+
+## 8. Cloud Hosting Patterns
+
+### 8.1 AWS Pattern
+
+```mermaid
+graph TB
+    Users["Users"] --> CF["CloudFront"]
+    CF --> ALB["Load Balancer"]
+    ALB --> App["EC2 / ECS / Lambda"]
+    App --> RDS["RDS"]
+    App --> Redis["ElastiCache"]
+    App --> SQS["SQS"]
+    SQS --> Worker["Workers"]
+```
+
+### 8.2 Azure Pattern
+
+```mermaid
+graph TB
+    Users["Users"] --> FrontDoor["Front Door"]
+    FrontDoor --> App["App Service / AKS"]
+    App --> SQL["Azure SQL"]
+    App --> Redis["Azure Cache"]
+    App --> SB["Service Bus"]
+    SB --> Worker["Functions / Apps"]
+```
+
+### 8.3 GCP Pattern
+
+```mermaid
+graph TB
+    Users["Users"] --> LB["Cloud Load Balancer"]
+    LB --> App["GKE / Cloud Run"]
+    App --> SQL["Cloud SQL"]
+    App --> Redis["Memorystore"]
+    App --> PubSub["Pub/Sub"]
+    PubSub --> Worker["Cloud Functions / Jobs"]
+```
+
+---
+
+## 9. Hosting and Server Model
+
+### 9.1 Shared Hosting
+
+```mermaid
+graph TB
+    Users["Users"] --> Server["Shared Server"]
+    Server --> App["Web App"]
+    Server --> DB["Shared DB"]
+```
+
+### 9.2 VPS
+
+```mermaid
+graph TB
+    Users["Users"] --> VPS["VPS Instance"]
+    VPS --> Nginx["Nginx"]
+    Nginx --> App["App Server"]
+    App --> DB["Database"]
+```
+
+### 9.3 Cloud Hosting
+
+```mermaid
+graph TB
+    Users["Users"] --> LB["Load Balancer"]
+    LB --> App1["Server 1"]
+    LB --> App2["Server 2"]
+    App1 --> Cache["Cache"]
+    App2 --> Cache
+    App1 --> DB["Managed DB"]
+    App2 --> DB
+```
+
+### 9.4 Container Hosting
+
+```mermaid
+graph TB
+    Users["Users"] --> Ingress["Ingress"]
+    Ingress --> K8s["Kubernetes Cluster"]
+    K8s --> Pod1["Container 1"]
+    K8s --> Pod2["Container 2"]
+    Pod1 --> DB["Database"]
+    Pod2 --> DB
+```
+
+### 9.5 Serverless Hosting
+
+```mermaid
+graph TB
+    Users["Users"] --> API["API Gateway"]
+    API --> Fn1["Function 1"]
+    API --> Fn2["Function 2"]
+    Fn1 --> Storage["Storage / DB"]
+    Fn2 --> Storage
+```
+
+---
+
+## 10. Production Infrastructure Recommendations
+
+- Put TLS termination and WAF at the edge
+- Use load balancing and health checks in front of app nodes
+- Run stateless services behind a load balancer
+- Keep state in managed data stores
+- Externalize async work to queues and workers
+- Keep security policies centralized
+- Monitor core latency, saturation, and error budgets
+- Test both scale-out and failure modes before production
+
+---
+
+## 11. Security + Scalability Combined Blueprint
+
+```mermaid
+graph TB
+    Users["Users"] --> WAF["WAF / Edge Protection"]
+    WAF --> LB["Load Balancer"]
+    LB --> API["API Gateway"]
+    API --> Auth["Auth & Policy"]
+    Auth --> App1["App Instance 1"]
+    Auth --> App2["App Instance 2"]
+    Auth --> App3["App Instance 3"]
+    App1 --> Cache["Redis"]
+    App2 --> Cache
+    App3 --> Cache
+    App1 --> DB["Primary DB"]
+    App2 --> DB
+    App3 --> DB
+    App1 --> MQ["Queue"]
+    App2 --> MQ
+    App3 --> MQ
+    MQ --> Worker["Workers"]
+    App1 --> OTel["Observability"]
+    App2 --> OTel
+    App3 --> OTel
+```
+
+This combined pattern provides:
+- Secure ingress and request handling
+- Horizontal scaling for application compute
+- Decoupled async processing
+- Observability and operational insights
+- A stable path to production growth
+
+---
+
+## 12. Final Recommendation
+
+The most resilient systems typically combine:
+
+- Secure edge and identity layers
+- Horizontal scaling for stateless services
+- Managed databases, caches, and queues
+- Async processing for heavy work
+- Observability for latency and errors
+- Automated deployment with rollback safety
+- Cloud-native or containerized hosting for elasticity
+
+The goal is to reach the lowest-complexity design that still meets performance, security, and reliability targets.
 
 ---
 
