@@ -1,6 +1,6 @@
 # System Architecture Overview
 
-This document provides a comprehensive architecture reference covering application patterns, deployment strategy, scaling models, security, observability, disaster recovery, CI/CD, data flow, and cloud deployments.
+This document provides a comprehensive architecture reference covering application patterns, deployment strategy, scaling models, security, observability, disaster recovery, CI/CD, data flow, cloud deployments, hosting models, and server architecture.
 
 ## 1. Application Architecture Overview
 
@@ -448,87 +448,327 @@ graph TB
 
 ---
 
-## 8. Security + Observability + DR + CI/CD Combined View
+## 8. Hosting Models and Server Architecture
+
+Hosting and server architecture determine where the application lives, how it is provisioned, and how it is operated. Different hosting models trade cost, flexibility, operational load, and scalability.
+
+### 8.1 Shared Hosting
 
 ```mermaid
 graph TB
-    Users["Users"] --> CDN["CDN / Edge Security"]
-    CDN --> GW["API Gateway"]
-    GW --> Auth["Auth & Policy"]
-    Auth --> App["Application Tier"]
-    App --> Cache["Redis / Cache"]
-    App --> DB["Primary DB"]
-    App --> Queue["Message Queue"]
-    Queue --> Worker["Background Worker"]
-
-    GW --> WAF["WAF / Rate Limiting"]
-    App --> Logs["Structured Logs"]
-    App --> Traces["Distributed Tracing"]
-    App --> Metrics["Metrics"]
-    Logs --> Obs["Observability Platform"]
-    Metrics --> Obs
-    Traces --> Obs
-
-    DB --> Backup["Backups / Snapshot Replication"]
-    Backup --> DR["DR Region / Restore"]
-
-    App --> CI["CI/CD Pipeline"]
-    CI --> Deploy["Deployment Automation"]
-    Deploy --> Prod["Production Release"]
-    Prod --> Alerts["Monitoring / Alerts"]
+    Users["Users"] --> SharedHost["Shared Hosting Server"]
+    SharedHost --> App["Web App"]
+    SharedHost --> DB["Shared Database"]
+    SharedHost --> FTP["File Storage"]
 ```
 
----
+**Use cases:**
+- Small static sites
+- Simple WordPress sites
+- Low-traffic internal websites
 
-## 9. Practical Architecture Decision Guide
+**Pros:**
+- Low cost
+- Minimal setup complexity
+- Managed by provider
 
-### Use a Monolith when:
-- You are validating a product idea
-- The system is small or medium-sized
-- The team is small and co-located
-- The domain is not yet complex
-
-### Use Microservices when:
-- Multiple teams own separate domains
-- You need independent deployability
-- High scale or resilience is important
-- Clear service boundaries exist
-
-### Use Serverless when:
-- Workloads are bursty or event-driven
-- You want to minimize infrastructure management
-- You are okay with managed runtime constraints
-
-### Use Event Driven when:
-- You need decoupled systems
-- There are multiple downstream consumers
-- Real-time or asynchronous processing matters
-
-### Use CQRS when:
-- Reads and writes have different shapes and latencies
-- Reporting or search is expensive
-- You need highly optimized query paths
-
-### Use Hybrid when:
-- Legacy systems remain in place
-- Compliance and data residency laws matter
-- Migration to the cloud is staged
+**Cons:**
+- Limited resources
+- Shared performance impact
+- Less control and isolation
 
 ---
 
-## 10. Final Recommendations
+### 8.2 VPS Hosting
 
-Production systems are usually not built around one architecture pattern alone. A realistic architecture combines several models:
+```mermaid
+graph TB
+    Users["Users"] --> VPS["VPS Instance"]
+    VPS --> Nginx["Nginx / Apache"]
+    Nginx --> App["Application Server"]
+    App --> DB["PostgreSQL / MySQL"]
+    App --> Storage["Persistent Storage"]
+```
 
-- API gateway for request routing and protection
-- Service-based application decomposition for modularity
-- Caching and queueing for scale and resilience
-- CI/CD automation for safe release management
-- Monitoring and tracing for system visibility
-- Backups and DR plans for continuity
-- Cloud-managed services to reduce ops burden
+**Use cases:**
+- Small business applications
+- Custom deployments
+- Cost-effective control without full bare metal
 
-The most robust design is often the simplest architecture that meets availability, scale, and maintainability requirements while keeping operational complexity under control.
+**Pros:**
+- Better control than shared hosting
+- Moderate scalability
+- Easier custom configuration
+
+**Cons:**
+- Requires OS and patch management
+- You manage runtime dependencies
+- Limited to single server unless clustered
+
+---
+
+### 8.3 Dedicated Servers
+
+```mermaid
+graph TB
+    Users["Users"] --> LB["Load Balancer"]
+    LB --> ServerA["Dedicated Server A"]
+    LB --> ServerB["Dedicated Server B"]
+    ServerA --> DB["Database Server"]
+    ServerB --> App["Application Services"]
+    DB --> Storage["NAS / Storage"]
+```
+
+**Use cases:**
+- High-performance workloads
+- Enterprise infrastructure
+- Regulated or custom environments
+
+**Pros:**
+- Maximum resource control
+- Better performance predictability
+- Strong isolation
+
+**Cons:**
+- Higher cost
+- More hardware maintenance
+- Requires in-house ops or managed hosting
+
+---
+
+### 8.4 Cloud Hosting
+
+```mermaid
+graph TB
+    Users["Users"] --> CDN["CDN / Edge"]
+    CDN --> LB["Cloud Load Balancer"]
+    LB --> VM["VM / Container / Serverless"]
+    VM --> Cache["Redis Cache"]
+    VM --> DB["Managed Database"]
+    VM --> Storage["Object Storage"]
+    VM --> Queue["Queue Service"]
+```
+
+**Use cases:**
+- Scalable web apps
+- Modern SaaS platforms
+- Multi-region systems and microservices
+
+**Pros:**
+- Elastic scaling
+- Pay-as-you-go
+- Managed infrastructure services
+- Multi-region availability
+
+**Cons:**
+- Cloud cost complexity
+- Vendor lock-in risk
+- Requires architecture planning
+
+---
+
+### 8.5 Container Hosting
+
+```mermaid
+graph TB
+    Users["Users"] --> Ingress["Ingress Controller"]
+    Ingress --> Kube["Kubernetes Cluster"]
+    Kube --> Pod1["App Container 1"]
+    Kube --> Pod2["App Container 2"]
+    Kube --> Pod3["App Container 3"]
+    Pod1 --> DB["Managed DB"]
+    Pod2 --> DB
+    Pod3 --> DB
+    Kube --> Storage["Persistent Volume"]
+```
+
+**Use cases:**
+- Microservices deployment
+- Portability across environments
+- Modern application delivery pipelines
+
+**Pros:**
+- Efficient resource usage
+- Consistent runtimes
+- Easier orchestration and scaling
+
+**Cons:**
+- More orchestration complexity
+- Requires cluster and networking knowledge
+- Security and image validation are critical
+
+---
+
+### 8.6 Serverless Hosting
+
+```mermaid
+graph TB
+    User["User"] --> Gateway["API Gateway"]
+    Gateway --> Fn1["Function 1"]
+    Gateway --> Fn2["Function 2"]
+    Fn1 --> Data["Database / Storage"]
+    Fn2 --> Data
+    Fn1 --> Logs["Cloud Logs / Metrics"]
+    Fn2 --> Logs
+```
+
+**Use cases:**
+- Event-driven processing
+- APIs with intermittent traffic
+- High automation workloads
+
+**Pros:**
+- No server maintenance
+- High elasticity
+- Cost-effective for bursty workloads
+
+**Cons:**
+- Cold starts
+- Limited runtime lifetime
+- Debugging and observability can be harder
+
+---
+
+## 9. Server Types and Responsibilities
+
+A server architecture usually includes multiple roles depending on workload and scale.
+
+### 9.1 Web Server
+
+- Handles HTTP requests
+- Serves static files or proxies to app servers
+- Examples: NGINX, Apache, Envoy
+
+### 9.2 Application Server
+
+- Runs business logic
+- Connects to databases and downstream APIs
+- Examples: Node.js, Java Spring Boot, Python Django, Go, ASP.NET
+
+### 9.3 Database Server
+
+- Persists transactional data
+- Supports query execution and indexing
+- Examples: PostgreSQL, MySQL, SQL Server, MongoDB, Redis
+
+### 9.4 Cache Server
+
+- Stores frequently accessed data in memory
+- Reduces repeated database hits
+- Examples: Redis, Memcached
+
+### 9.5 Queue / Event Server
+
+- Decouples producer and consumer systems
+- Handles async workloads
+- Examples: RabbitMQ, Kafka, SQS, Azure Service Bus
+
+### 9.6 Search / Index Server
+
+- Provides search and document indexing
+- Examples: Elasticsearch, OpenSearch, Algolia
+
+### 9.7 Monitoring / Observability Server
+
+- Collects metrics, logs, traces, and alerts
+- Examples: Prometheus, Grafana, Datadog, OpenTelemetry, New Relic
+
+---
+
+## 10. Typical Production Server Layout
+
+```mermaid
+graph TB
+    Users["Users"] --> Edge["Edge / CDN / WAF"]
+    Edge --> LB["Load Balancer"]
+    LB --> Web1["Web Server 1"]
+    LB --> Web2["Web Server 2"]
+    Web1 --> App1["App Server 1"]
+    Web2 --> App2["App Server 2"]
+    App1 --> DB["Primary Database"]
+    App2 --> DB
+    App1 --> Cache["Redis Cluster"]
+    App2 --> Cache
+    App1 --> Queue["Message Queue"]
+    App2 --> Queue
+    Queue --> Worker["Background Workers"]
+    App1 --> Monitor["Observability Platform"]
+    App2 --> Monitor
+```
+
+### Typical responsibilities by layer
+
+- Edge: TLS termination, WAF, caching, DDoS protection
+- Load balancer: health checks, request distribution, sticky sessions if needed
+- Web servers: static assets, reverse proxying, basic request validation
+- Application servers: business logic and API execution
+- Data servers: DB, cache, message queue, search engine
+- Background workers: async email, file processing, import/export
+- Observability layer: metrics, traces, dashboards, alerts
+
+---
+
+## 11. Hosting and Infrastructure Decision Guide
+
+### Choose Shared Hosting when:
+- The app is small and traffic is low
+- Budget is limited
+- No custom server configuration is needed
+
+### Choose VPS when:
+- You need more control than shared hosting
+- You want a single dedicated environment
+- The workload is moderate and predictable
+
+### Choose Dedicated Hosts when:
+- You need stronger isolation or resource guarantees
+- You run high-performance enterprise workloads
+- Custom hardware or compliance requirements exist
+
+### Choose Cloud Hosting when:
+- You need autoscaling, resilience, and global availability
+- The application is growing or has variable traffic
+- You want a managed service model
+
+### Choose Containers/Kubernetes when:
+- You need portable deployments
+- Multiple services must be orchestrated together
+- You want repeatable deployments across environments
+
+### Choose Serverless when:
+- You want minimal operations overhead
+- Workloads are event-driven or bursty
+- Fine-grained autoscaling is more valuable than fixed infrastructure
+
+---
+
+## 12. Security, Operations, and Reliability by Hosting Model
+
+| Hosting Model | Security Responsibility | Ops Burden | Scalability | Best For |
+|---|---|---|---|---|
+| Shared Hosting | Provider managed | Low | Low | Static sites |
+| VPS | Moderate | Medium | Medium | Small custom apps |
+| Dedicated Server | High | High | Medium | Enterprise and custom workloads |
+| Cloud Managed | Shared + customer | Medium | High | Modern SaaS apps |
+| Containers | Shared + customer | Medium-High | High | Microservices |
+| Serverless | Shared + customer | Low | Very High | Event-driven workloads |
+
+---
+
+## 13. Final Architecture Recommendation
+
+A modern production system often combines hosting and architecture decisions thoughtfully:
+
+- Use a cloud-managed or containerized hosting model for flexibility and scaling
+- Put applications behind a load balancer and API gateway
+- Use managed databases and caches to reduce operational work
+- Protect the system with WAF, TLS, RBAC, and secret managers
+- Add observability with logs, metrics, tracing, and alerts
+- Prepare for failure with backups and DR procedures
+- Use CI/CD pipelines with safe deployment strategies
+- Add background workers for asynchronous tasks and queue-based scaling
+
+The best architecture is not the most complex one. It is the architecture that meets the business requirements with the right amount of performance, reliability, security, and operational cost.
 
 ---
 
